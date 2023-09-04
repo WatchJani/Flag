@@ -27,6 +27,6 @@ func (c Command) Parse() {
 
 func main() {
 	add := FlagCommand("add")
-
+	//test
 	add.Parse()
 }
