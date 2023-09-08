@@ -49,7 +49,7 @@ func New() *Command {
 	}
 }
 
-func (c *Command) Add(keyWord string, fn interface{}, flags []Flag) {
+func (c *Command) Add(keyWord string, fn interface{}, flags ...Flag) {
 	keyWord = strings.ToLower(keyWord)
 
 	c.command[keyWord] = fn

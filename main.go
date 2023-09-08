@@ -9,8 +9,9 @@ import (
 func main() {
 	command := command.New()
 
-	command.Add("read", Read, gen.GenerateFlagsRead())
-	command.Add("anotherFunction", AnotherFunction, gen.GenerateFlagsAnotherFunction())
+	command.Add("read", Read, gen.GenerateFlagsRead()...)
+	command.Add("anotherFunction", AnotherFunction, gen.GenerateFlagsAnotherFunction()...)
+	command.Add("add", Add)
 
 	command.Parse()
 }
@@ -21,4 +22,8 @@ func Read(a int, b string, c float64) {
 
 func AnotherFunction(x string, y bool) {
 	fmt.Printf("x: %s, y: %v\n", x, y)
+}
+
+func Add() {
+	fmt.Println("Add")
 }
