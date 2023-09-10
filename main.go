@@ -25,5 +25,6 @@ func AnotherFunction(x string, y bool) {
 }
 
 func Add() {
-	fmt.Println("Add")
+	myArgs := command.Args()
+	fmt.Println(myArgs)
 }
