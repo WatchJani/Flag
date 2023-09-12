@@ -2,13 +2,15 @@ package command
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 )
 
-func CallWithSliceData(fn interface{}, args []interface{}) {
+func GenerateFuncArg(fn interface{}, args []interface{}) {
 	funcType := reflect.TypeOf(fn)
 	if funcType.Kind() != reflect.Func || funcType.NumIn() != len(args) {
 		fmt.Println("The wrong arguments.")
@@ -21,13 +23,43 @@ func CallWithSliceData(fn interface{}, args []interface{}) {
 	}
 
 	reflect.ValueOf(fn).Call(callArgs)
-
 }
 
 type Flag struct {
 	key          string
 	defaultValue interface{}
 	description  string
+}
+
+func (f *Flag) Update(val string) error {
+	myType := reflect.TypeOf(f.defaultValue)
+
+	switch myType.Kind() {
+	case reflect.Int:
+		intValue, err := strconv.Atoi(val)
+		if err != nil {
+			return fmt.Errorf("Is not possible convert %s in int: %v", val, err)
+		}
+		f.defaultValue = intValue
+	case reflect.Bool:
+		boolValue, err := strconv.ParseBool(val)
+		if err != nil {
+			return fmt.Errorf("Is not possible convert %s in bool: %v", val, err)
+		}
+		f.defaultValue = boolValue
+	case reflect.String:
+		f.defaultValue = val
+	case reflect.Float64:
+		floatValue, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return fmt.Errorf("Is not possible convert %s in float64: %v", val, err)
+		}
+		f.defaultValue = floatValue
+	default:
+		return fmt.Errorf("Type is not supported: %v", myType.Kind())
+	}
+
+	return nil
 }
 
 func NewFlag(key string, defaultValue interface{}, description string) Flag {
@@ -69,30 +101,58 @@ func GetCommandName() string {
 
 func (c Command) Parse() {
 	args := os.Args[1:]
+
+	//is command founded
 	if len(args) < 1 {
-		Usage()
+		c.Usage()
 		return
 	}
 
+	//is flag founded
 	if _, ok := c.flags[args[0]]; !ok {
 		c.NotFounded()
 		return
 	}
 
-	var flags []interface{}
+	var (
+		flags    []interface{}
+		userFlag map[string]string = make(map[string]string)
+	)
 
+	//create flags from user and flags value
+	for index := 1; index < len(args); index += 2 {
+		userFlag[CheckFlag(args[index])] = args[index+1]
+	}
+
+	//update user flags
 	for _, value := range c.flags[args[0]] {
+		if _, ok := userFlag[value.key]; ok {
+			//fix
+			if err := value.Update(userFlag[value.key]); err != nil {
+				log.Println(err)
+			}
+		}
 		flags = append(flags, value.defaultValue)
 	}
 
-	CallWithSliceData(c.command[args[0]], flags)
+	GenerateFuncArg(c.command[args[0]], flags)
+}
+
+func CheckFlag(flag string) string {
+	if flag[0] == '-' {
+		return flag[1:]
+	} else if flag[0:2] == "--" {
+		return flag[2:]
+	}
+
+	return flag
 }
 
 func (c Command) NotFounded() {
 	fmt.Printf("%s: '%s' is not a %s command. See '%s --help'.\n", c.app, GetCommandName(), c.app, c.app)
 }
 
-func Usage() {
+func (c Command) Usage() {
 	fmt.Println(`usage: git [--version] [--help] [-C <path>] [-c <name>=<value>]
 	[--exec-path[=<path>]] [--html-path] [--man-path] [--info-path]
 	[-p | --paginate | -P | --no-pager] [--no-replace-objects] [--bare]
