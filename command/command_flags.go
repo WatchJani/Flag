@@ -1,6 +1,7 @@
 package command
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -29,6 +30,7 @@ type Flag struct {
 	key          string
 	defaultValue interface{}
 	description  string
+	flagType     string
 }
 
 func (f *Flag) Update(val string) error {
@@ -62,18 +64,37 @@ func (f *Flag) Update(val string) error {
 	return nil
 }
 
-func NewFlag(key string, defaultValue interface{}, description string) Flag {
+func newFlag(key string, defaultValue interface{}, description string, flagType string) Flag {
 	return Flag{
 		key:          key,
 		defaultValue: defaultValue,
 		description:  description,
+		flagType:     flagType,
 	}
+}
+
+func String(key string, defaultValue interface{}, description string) Flag {
+	return newFlag(key, defaultValue, description, "string")
+}
+
+func Int(key string, defaultValue interface{}, description string) Flag {
+	return newFlag(key, defaultValue, description, "int")
+}
+
+// default value of flag is always true
+func Bool(key string, description string) Flag {
+	return newFlag(key, "true", description, "bool")
+}
+
+func Float64(key string, defaultValue interface{}, description string) Flag {
+	return newFlag(key, defaultValue, description, "float64")
 }
 
 type Command struct {
 	app     string
 	command map[string]interface{}
 	flags   map[string][]Flag
+	boolean map[string][]Flag // need for easier read flag from user input
 }
 
 func New() *Command {
@@ -81,6 +102,7 @@ func New() *Command {
 		app:     filepath.Base(os.Args[0]),
 		command: make(map[string]interface{}),
 		flags:   make(map[string][]Flag),
+		boolean: make(map[string][]Flag),
 	}
 }
 
@@ -89,6 +111,12 @@ func (c *Command) Add(keyWord string, fn interface{}, flags ...Flag) {
 
 	c.command[keyWord] = fn
 	c.flags[keyWord] = append(c.flags[keyWord], flags...)
+
+	for _, value := range flags {
+		if value.flagType == "bool" {
+			c.boolean[value.key] = append(c.boolean[value.key], value)
+		}
+	}
 }
 
 func Args() []string {
@@ -108,26 +136,23 @@ func (c Command) Parse() {
 		return
 	}
 
-	//is flag founded
+	//is command founded
 	if _, ok := c.flags[args[0]]; !ok {
 		c.NotFounded()
 		return
 	}
 
-	var (
-		flags    []interface{}
-		userFlag map[string]string = make(map[string]string)
-	)
+	var flags []interface{}
 
-	//create flags from user and flags value
-	for index := 1; index < len(args); index += 2 {
-		userFlag[CheckFlag(args[index])] = args[index+1]
+	userFlag, err := CheckFlag(args[1:], c.boolean[args[0]])
+	if err != nil {
+		fmt.Println(err)
+		return
 	}
 
-	//update user flags
+	//update user flags value for specific command
 	for _, value := range c.flags[args[0]] {
 		if _, ok := userFlag[value.key]; ok {
-			//fix
 			if err := value.Update(userFlag[value.key]); err != nil {
 				log.Println(err)
 			}
@@ -138,14 +163,46 @@ func (c Command) Parse() {
 	GenerateFuncArg(c.command[args[0]], flags)
 }
 
-func CheckFlag(flag string) string {
-	if flag[0] == '-' {
-		return flag[1:]
-	} else if flag[0:2] == "--" {
-		return flag[2:]
+// parse user flags
+func CheckFlag(userInput []string, boolean []Flag) (map[string]string, error) {
+	var userFlag map[string]string = make(map[string]string)
+
+	for i := 0; i < len(userInput); i++ {
+		if userInput[i][0:2] == "--" {
+			if !strings.Contains(userInput[i], "=") {
+				return userFlag, errors.New("Not supported syntax for flags")
+			}
+
+			keyVal := strings.Split(userInput[i], "=")
+
+			userFlag[keyVal[0][2:]] = keyVal[1]
+		} else if userInput[i][0] == '-' && i < len(userInput)-1 && userInput[i+1][0] != '-' { //flag 100%
+			userFlag[userInput[i][1:]] = userInput[i+1]
+		} else {
+			if userInput[i][0] == '-' {
+				return userFlag, errors.New("Wrong flag")
+			}
+			err := findSubString(userInput[i], boolean, &userFlag)
+
+			if err != nil {
+				return userFlag, err
+			}
+		}
 	}
 
-	return flag
+	return userFlag, nil
+}
+
+func findSubString(key string, flags []Flag, userFlags *map[string]string) error {
+	for _, subString := range flags {
+		if strings.Contains(key, subString.key) {
+			(*userFlags)[subString.key] = "false"
+		} else {
+			return errors.New("Wrong flag")
+		}
+	}
+
+	return nil
 }
 
 func (c Command) NotFounded() {
